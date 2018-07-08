@@ -20,22 +20,22 @@ const (
 )
 
 type JSONArrayValidation struct {
-	Type JSONType
+	Type JSONType `json:"type"`
 }
 
 type JSONProperty struct {
-	Type       JSONType
-	Items      JSONArrayValidation     // Populated if item is an array
-	Properties map[string]JSONProperty // Used if property type is an object
+	Type       JSONType                `json:"type"`
+	Items      *JSONArrayValidation    `json:"items,omitempty"`      // Populated if item is an array
+	Properties map[string]JSONProperty `json:"properties,omitempty"` // Used if property type is an object
 }
 
 type JSONSchema struct {
-	Schema      string
-	ID          string
-	Title       string
-	Description string
-	Type        JSONType
-	Properties  map[string]JSONProperty
+	Schema      string                  `json:"$schema"`
+	ID          string                  `json:"$id"`
+	Title       string                  `json:"title"`
+	Description string                  `json:"description"`
+	Type        JSONType                `json:"type"`
+	Properties  map[string]JSONProperty `json:"properties"`
 }
 
 func JsonToSchema(jsonStr string) (string, error) {
@@ -49,7 +49,7 @@ func JsonToSchema(jsonStr string) (string, error) {
 	js.Properties = iterMap(m)
 
 	var b []byte
-	b, err = json.Marshal(js)
+	b, err = json.MarshalIndent(js, "", "\t")
 
 	if err != nil {
 		return "", err
@@ -78,12 +78,33 @@ func iterMap(jsonMap map[string]interface{}) map[string]JSONProperty {
 			props[k] = prop
 		case []interface{}:
 			prop := JSONProperty{Type: JSONTypeArray}
-			prop.Items = JSONArrayValidation{}
+			arr := v.([]interface{})
+			if len(arr) > 0 {
+				prop.Items = &JSONArrayValidation{}
+				prop.Items.Type = getJSONType(arr[0])
+			}
 			props[k] = prop
 		}
 	}
 
 	return props
+}
+
+func getJSONType(v interface{}) JSONType {
+	switch v.(type) {
+	case string:
+		return JSONTypeString
+	case float64:
+		return JSONTypeNumber
+	case bool:
+		return JSONTypeBool
+	case map[string]interface{}:
+		return JSONTypeObject
+	case []interface{}:
+		return JSONTypeArray
+	}
+
+	return JSONTypeString
 }
 
 func jsonToMap(r io.Reader) (map[string]interface{}, error) {
