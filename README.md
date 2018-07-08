@@ -3,4 +3,4 @@
 
 ## Library to generate a json schema given a json string as input.
 
-Meant to be used as a quick start to creating a json schema based on an existing json data.
+Meant to be used as a quick start to creating a json schema based on existing json data.
