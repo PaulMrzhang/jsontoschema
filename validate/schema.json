@@ -1,0 +1,21 @@
+{
+	"$schema": "",
+	"$id": "",
+	"title": "",
+	"description": "",
+	"type": "object",
+	"properties": {
+		"completed": {
+			"type": "boolean"
+		},
+		"id": {
+			"type": "number"
+		},
+		"title": {
+			"type": "string"
+		},
+		"userId": {
+			"type": "number"
+		}
+	}
+}
