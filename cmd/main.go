@@ -12,87 +12,121 @@ import (
 	"github.com/fratle/jsontoschema"
 )
 
-func main() {
-	info, err := os.Stdin.Stat()
+var usage = `Reads a json input from a file, and url or via a commandline pipe
+Specify either -url followed by an url or -file followed by a filepath
+
+Usage:
+url:  jsontoschema -url https://jsonplaceholder.typicode.com/todos/1
+file: jsontoschema -file dump.json
+curl: curl -s https://jsonplaceholder.typicode.com/todos/1 2<&1 | jsontoschema`
+
+func jsonFromFile(file string) (string, error) {
+	dat, err := ioutil.ReadFile(file)
 	if err != nil {
-		panic(err)
+		return "", err
 	}
 
-	if info.Mode()&os.ModeNamedPipe == 0 {
+	schema, err := jsontoschema.JsonToSchema(string(dat))
+	if err != nil {
+		return "", err
+	}
 
-		file := flag.String("file", "", "the path is a json file on disk")
-		url := flag.String("url", "", "the path is a url to a json payload")
-		flag.Parse()
+	return schema, nil
+}
 
-		if *file == "" && *url == "" {
-			fmt.Println("Reads a json input from a file, and url or via a commandline pipe")
-			fmt.Println("Specify either -url followed by an url or -file followed by a filepath")
-			fmt.Println("\nUsage:")
-			fmt.Println("\nurl:\njsontoschema -url https://jsonplaceholder.typicode.com/todos/1")
-			fmt.Println("\nfile:\njsontoschema -file dump.json")
-			fmt.Println("\ncurl:\ncurl -s https://jsonplaceholder.typicode.com/todos/1 2<&1 | jsontoschema\n")
-			os.Exit(1)
+func jsonFromUrl(url string) (string, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+
+	if err != nil {
+		return "", err
+	}
+
+	schema, err := jsontoschema.JsonToSchema(string(body))
+	if err != nil {
+		return "", err
+	}
+	return schema, nil
+}
+
+func getSchemaFromStdin() (string, error) {
+	b := strings.Builder{}
+	scanner := bufio.NewScanner(os.Stdin)
+
+	for scanner.Scan() {
+		_, err := b.Write(scanner.Bytes())
+
+		if err != nil {
+			return "", err
 		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", err
+	}
 
-		if *file != "" && *url != "" {
-			fmt.Println("must specify either -url or -file")
-			os.Exit(1)
-		}
+	schema, err := jsontoschema.JsonToSchema(b.String())
+	if err != nil {
 
-		if *file != "" {
-			dat, err := ioutil.ReadFile(*file)
-			if err != nil {
-				panic(err)
-			}
+		return "", err
+	}
+	return schema, nil
+}
 
-			schema, err := jsontoschema.JsonToSchema(string(dat))
-			if err != nil {
-				panic(err)
-			}
-			fmt.Println(schema)
-		}
+func handlePipe() bool {
+	info, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
 
-		if *url != "" {
-			resp, err := http.Get(*url)
-			if err != nil {
-				panic(err)
-			}
-			defer resp.Body.Close()
-			body, err := ioutil.ReadAll(resp.Body)
+	isPipe := info.Mode()&os.ModeNamedPipe != 0
 
-			if err != nil {
-				panic(err)
-			}
-
-			schema, err := jsontoschema.JsonToSchema(string(body))
-			if err != nil {
-				panic(err)
-			}
-			fmt.Println(schema)
-		}
-
-	} else {
-		b := strings.Builder{}
-		scanner := bufio.NewScanner(os.Stdin)
-
-		for scanner.Scan() {
-			fmt.Println()
-			_, err := b.Write(scanner.Bytes())
-
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "reading standard input:", err)
-				os.Exit(1)
-			}
-		}
-		if err := scanner.Err(); err != nil {
+	if isPipe {
+		schema, err := getSchemaFromStdin()
+		if err != nil {
 			fmt.Fprintln(os.Stderr, "reading standard input:", err)
 			os.Exit(1)
 		}
+		fmt.Println(schema)
+		return true
+	}
+	return false
+}
 
-		schema, err := jsontoschema.JsonToSchema(b.String())
+func main() {
+	handlePipe()
+
+	file := flag.String("file", "", "the path is a json file on disk")
+	url := flag.String("url", "", "the path is a url to a json payload")
+	flag.Parse()
+
+	if *file == "" && *url == "" {
+		fmt.Println(usage)
+		os.Exit(1)
+	}
+
+	if *file != "" {
+		schema, err := jsonFromFile(*file)
 		if err != nil {
-			panic(err)
+			fmt.Printf("An error occured while getting json from url: %v\n", err)
+			os.Exit(1)
 		}
 		fmt.Println(schema)
+		os.Exit(0)
 	}
+
+	if *url != "" {
+		schema, err := jsonFromUrl(*url)
+		if err != nil {
+			fmt.Printf("An error occured while getting json from url: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(schema)
+		os.Exit(0)
+	}
+
+	return
 }
