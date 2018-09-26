@@ -21,17 +21,12 @@ file: jsontoschema -file dump.json
 curl: curl -s https://jsonplaceholder.typicode.com/todos/1 2<&1 | jsontoschema`
 
 func jsonFromFile(file string) (string, error) {
-	dat, err := ioutil.ReadFile(file)
+	fb, err := ioutil.ReadFile(file)
 	if err != nil {
 		return "", err
 	}
 
-	schema, err := jsontoschema.JsonToSchema(string(dat))
-	if err != nil {
-		return "", err
-	}
-
-	return schema, nil
+	return string(fb), nil
 }
 
 func jsonFromUrl(url string) (string, error) {
@@ -46,14 +41,10 @@ func jsonFromUrl(url string) (string, error) {
 		return "", err
 	}
 
-	schema, err := jsontoschema.JsonToSchema(string(body))
-	if err != nil {
-		return "", err
-	}
-	return schema, nil
+	return string(body), nil
 }
 
-func getSchemaFromStdin() (string, error) {
+func jsonFromStdin() (string, error) {
 	b := strings.Builder{}
 	scanner := bufio.NewScanner(os.Stdin)
 
@@ -68,36 +59,55 @@ func getSchemaFromStdin() (string, error) {
 		return "", err
 	}
 
-	schema, err := jsontoschema.JsonToSchema(b.String())
-	if err != nil {
-
-		return "", err
-	}
-	return schema, nil
+	return b.String(), nil
 }
 
-func handlePipe() bool {
+func isPipe() bool {
 	info, err := os.Stdin.Stat()
 	if err != nil {
 		return false
 	}
 
-	isPipe := info.Mode()&os.ModeNamedPipe != 0
+	return info.Mode()&os.ModeNamedPipe != 0
+}
 
-	if isPipe {
-		schema, err := getSchemaFromStdin()
+func jsonFromPipe(_ string) (string, error) {
+	json, err := jsonFromStdin()
+	if err != nil {
+		return "", err
+	}
+	return json, nil
+}
+
+type jsonF func(s string) (string, error)
+
+func createSchemaFromJSON(f jsonF, s string) (string, error) {
+	json, err := f(s)
+
+	if err != nil {
+		return "", err
+	}
+
+	schema, err := jsontoschema.JsonToSchema(json)
+
+	if err != nil {
+		return "", err
+	}
+
+	return schema, nil
+}
+
+func main() {
+
+	if isPipe() {
+		schema, err := createSchemaFromJSON(jsonFromPipe, "")
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "reading standard input:", err)
 			os.Exit(1)
 		}
 		fmt.Println(schema)
-		return true
+		os.Exit(0)
 	}
-	return false
-}
-
-func main() {
-	handlePipe()
 
 	file := flag.String("file", "", "the path is a json file on disk")
 	url := flag.String("url", "", "the path is a url to a json payload")
@@ -109,9 +119,10 @@ func main() {
 	}
 
 	if *file != "" {
-		schema, err := jsonFromFile(*file)
+		schema, err := createSchemaFromJSON(jsonFromFile, *file)
+
 		if err != nil {
-			fmt.Printf("An error occured while getting json from url: %v\n", err)
+			fmt.Fprintf(os.Stderr, "An error occured while getting json from url: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Println(schema)
@@ -119,9 +130,9 @@ func main() {
 	}
 
 	if *url != "" {
-		schema, err := jsonFromUrl(*url)
+		schema, err := createSchemaFromJSON(jsonFromUrl, *url)
 		if err != nil {
-			fmt.Printf("An error occured while getting json from url: %v\n", err)
+			fmt.Fprintf(os.Stderr, "An error occured while getting json from url: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Println(schema)
